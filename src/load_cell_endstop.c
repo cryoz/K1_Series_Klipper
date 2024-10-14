@@ -47,8 +47,9 @@ struct load_cell_endstop {
     int32_t last_sample, safety_counts_min, safety_counts_max
             , filter_counts_min, filter_counts_max
             , trigger_counts_min, trigger_counts_max, tare_counts;
-    uint8_t flags, sample_count, trigger_count, trigger_reason, watchdog_max
-            , watchdog_count, n_sections, last_section, round_shift;
+    uint8_t flags, sample_count, trigger_count, trigger_reason, error_reason
+            , watchdog_max, watchdog_count, n_sections, last_section
+            , round_shift;
     fixedQ12_t trigger_grams, grams_per_count;
     // filter composed of second order sections
     fixedQ12_t filter[MAX_SECTIONS][SECTION_WIDTH];     // aka sos
@@ -159,6 +160,15 @@ try_trigger(struct load_cell_endstop *lce)
     }
 }
 
+void
+try_trigger_error(struct load_cell_endstop *lce)
+{
+    uint8_t is_homing = is_flag_set(FLAG_IS_HOMING, lce);
+    if (is_homing) {
+        trsync_do_trigger(lce->ts, lce->error_reason);
+    }
+}
+
 // Used by Sensors to report new raw ADC sample
 void
 load_cell_endstop_report_sample(struct load_cell_endstop *lce
@@ -174,7 +184,8 @@ load_cell_endstop_report_sample(struct load_cell_endstop *lce
     const uint8_t is_safety_trigger = sample <= lce->safety_counts_min
                                         || sample >= lce->safety_counts_max;
     if (is_homing && is_safety_trigger) {
-        shutdown("Load cell endstop: too much force!");
+        // too much force
+        try_trigger_error(lce);
     }
 
     // Use filter if filter is ready and trigger_grams configured
@@ -184,7 +195,8 @@ load_cell_endstop_report_sample(struct load_cell_endstop *lce
     if (is_homing && use_filter) {
         if (sample < lce->filter_counts_min
                 || sample > lce->filter_counts_max) {
-            shutdown("Continuous tare drift limit exceeded while homing");
+            // Continuous tare drift limit exceeded while homing
+            try_trigger_error(lce);
         }
         const fixedQ12_t grams = counts_to_grams(lce, sample);
         const fixedQ12_t filtered_grams = sosfilt(lce, grams);
@@ -246,7 +258,7 @@ watchdog_event(struct timer *t)
 
     irq_disable();
     if (lce->watchdog_count > lce->watchdog_max) {
-        shutdown("LoadCell Endstop timed out waiting on ADC data");
+        try_trigger_error(lce);
     }
     lce->watchdog_count += 1;
     irq_enable();
@@ -397,10 +409,11 @@ command_load_cell_endstop_home(uint32_t *args)
     }
     lce->ts = trsync_oid_lookup(args[1]);
     lce->trigger_reason = args[2];
-    lce->time.waketime = args[3];
-    lce->sample_count = args[4];
-    lce->rest_ticks = args[5];
-    lce->watchdog_max = args[6];
+    lce->error_reason = args[3];
+    lce->time.waketime = args[4];
+    lce->sample_count = args[5];
+    lce->rest_ticks = args[6];
+    lce->watchdog_max = args[7];
     lce->watchdog_count = 0;
     reset_filter_state(lce);
     lce->time.func = watchdog_event;
@@ -409,7 +422,8 @@ command_load_cell_endstop_home(uint32_t *args)
 }
 DECL_COMMAND(command_load_cell_endstop_home,
              "load_cell_endstop_home oid=%c trsync_oid=%c trigger_reason=%c"
-             " clock=%u sample_count=%c rest_ticks=%u timeout=%u");
+             " error_reason=%c clock=%u sample_count=%c rest_ticks=%u"
+             " timeout=%u");
 
 void
 command_load_cell_endstop_query_state(uint32_t *args)

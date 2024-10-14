@@ -40,9 +40,11 @@ source "src/atsam/Kconfig"
 source "src/atsamd/Kconfig"
 source "src/lpc176x/Kconfig"
 source "src/stm32/Kconfig"
+source "src/hc32f460/Kconfig"
 source "src/rp2040/Kconfig"
 source "src/gd32/Kconfig"
 source "src/pru/Kconfig"
+source "src/ar100/Kconfig"
 source "src/linux/Kconfig"
 source "src/simulator/Kconfig"
 
@@ -94,6 +96,31 @@ config USB_SERIAL_NUMBER
     string "USB serial number" if !USB_SERIAL_NUMBER_CHIPID
 endmenu
 
+config WANT_SENSORS
+    bool
+    depends on HAVE_GPIO_I2C || HAVE_GPIO_SPI
+    default y
+config WANT_LDC1612
+    bool
+    depends on HAVE_GPIO_I2C
+    default y
+config WANT_HX71X
+    bool
+    depends on WANT_GPIO_BITBANGING
+    default y
+config WANT_ADS1220
+    bool
+    depends on HAVE_GPIO_SPI
+    default y
+config WANT_LOAD_CELL_ENDSTOP
+    bool
+    depends on WANT_HX71X || WANT_ADS1220
+    default y
+config NEED_SENSOR_BULK
+    bool
+    depends on WANT_SENSORS || WANT_LIS2DW || WANT_LDC1612 || WANT_HX71X \
+        || WANT_ADS1220
+    default y
 # Generic configuration options for CANbus
 config CANSERIAL
     bool
@@ -102,7 +129,7 @@ config CANBUS
     default y if CANSERIAL || USBCANBUS
 config CANBUS_FREQUENCY
     int "CAN bus speed" if LOW_LEVEL_OPTIONS && CANBUS
-    default 500000
+    default 1000000
 config CANBUS_FILTER
     bool
     default y if CANSERIAL
