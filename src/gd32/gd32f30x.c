@@ -211,8 +211,16 @@ systemInit(void)
 
 
 void
+bootloader_request(void)
+{
+    dfu_reboot();
+}
+
+
+void
 armcm_main(void)
 {
+	dfu_reboot_check();
 	systemInit();
 	
 	SCB->VTOR = (uint32_t)VectorTable;
